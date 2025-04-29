@@ -4,20 +4,20 @@ import requests
 from oauth2client.service_account import ServiceAccountCredentials
 import gspread
 
-# Читаем сервис-аккаунт как raw JSON из переменных окружения
+# 1) Читаем JSON сервис-аккаунта из переменных окружения
 sa_json = os.environ.get('SERVICE_ACCOUNT_JSON')
 if not sa_json:
     raise EnvironmentError("SERVICE_ACCOUNT_JSON не задана в переменных окружения")
 
-# Парсим JSON прямо из строки
+# 2) Парсим его сразу из строки
 sa_info = json.loads(sa_json)
 
-# Читаем ID Google Sheets
+# 3) Читаем ID Google Sheets
 spreadsheet_id = os.environ.get('SPREADSHEET_ID')
 if not spreadsheet_id:
     raise EnvironmentError("SPREADSHEET_ID не задана в переменных окружения")
 
-# Авторизация в Google Sheets
+# 4) Авторизуемся в Google Sheets
 scope = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive'
@@ -27,7 +27,10 @@ gc = gspread.authorize(creds)
 sheet = gc.open_by_key(spreadsheet_id).sheet1
 
 def fetch_all_validators():
-    """Получаем весь массив метрик валидаторов одним запросом."""
+    """
+    Достаём сразу весь массив валидаторов по endpoint /metrics/summary/
+    (в нём есть все нужные поля, без пагинации).
+    """
     url = 'https://api.minersunion.ai/metrics/summary/'
     resp = requests.get(url)
     resp.raise_for_status()
@@ -36,14 +39,14 @@ def fetch_all_validators():
 def main():
     validators = fetch_all_validators()
 
-    # Заголовки для Google Sheets
+    # Заголовки колонок
     headers = [
         'Subnet Name', 'Score', 'Identity', 'Hotkey',
         'Total Stake Weight', 'VTrust', 'Dividends', 'Chk Take'
     ]
     rows = [headers]
 
-    # Собираем строки из полученных данных
+    # Собираем данные
     for v in validators:
         rows.append([
             v.get('subnetName'),
@@ -56,7 +59,7 @@ def main():
             v.get('checkTake'),
         ])
 
-    # Записываем в Google Sheets
+    # Пишем в Google Sheets
     sheet.clear()
     sheet.update(rows)
     print(f"Записано {len(rows)-1} строк в таблицу {spreadsheet_id}")

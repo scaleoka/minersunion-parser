@@ -34,12 +34,8 @@ def fetch_subnets(timeout=10):
     payload = r.json()
     if isinstance(payload, list):
         return payload
-    if isinstance(payload, dict):
-        data = payload.get('data') or payload
-        if isinstance(data, dict) and 'validators' in data:
-            return data['validators']
-    logging.error("Unexpected summary format: %s", type(payload))
-    return []
+    data = payload.get('data') or payload
+    return data.get('validators', []) if isinstance(data, dict) else []
 
 def fetch_history(netuid, timeout=10):
     url = f"{HISTORY_URL}&netuid={netuid}"
@@ -47,30 +43,25 @@ def fetch_history(netuid, timeout=10):
     r.raise_for_status()
     payload = r.json()
 
-    # DEBUG: покажем, где лежит история
+    # DEBUG: логируем всю структуру, чтобы увидеть, где лежат metrics
     logging.info("HISTORY payload for netuid=%s: %s", netuid, json.dumps(payload, indent=2))
 
-    # 1) Если отдали сразу список
+    # прокси на список
     if isinstance(payload, list):
         return payload
-
-    # 2) top-level 'validators' или 'history'
     if isinstance(payload, dict):
         for key in ('validators', 'history'):
             if key in payload and isinstance(payload[key], list):
                 return payload[key]
-        # 3) вложенный в data.*
         data = payload.get('data')
         if isinstance(data, dict):
             for key in ('validators', 'history'):
                 if key in data and isinstance(data[key], list):
                     return data[key]
-
     logging.warning("No history found for netuid=%s", netuid)
     return []
 
 def main():
-    # 1. Получаем список подсетей
     subnets = fetch_subnets()
     if not subnets:
         logging.error("No subnets found")
@@ -79,22 +70,12 @@ def main():
     max_netuid = max(mapping.keys())
     logging.info("Max netuid: %d", max_netuid)
 
-    # 2. Заголовки
     headers = [
-        'netuid',
-        'subnet_name',
-        'uid',
-        'score_current',
-        'identity',
-        'hotkey',
-        'total_stake',
-        'vtrust',
-        'dividends',
-        'chk_take',
+        'netuid','subnet_name','uid','score_current','identity','hotkey',
+        'total_stake','vtrust','dividends','chk_take',
     ]
     rows = [headers]
 
-    # 3. Проходим каждый netuid
     for netuid in range(1, max_netuid+1):
         name    = mapping.get(netuid, '')
         logging.info("Processing netuid=%d (%s)", netuid, name)
@@ -103,17 +84,23 @@ def main():
             rows.append([netuid, name] + ['']*(len(headers)-2))
             continue
 
+        # покажем ключи первого элемента для отладки
+        logging.info("Validator keys for netuid=%d: %s", netuid, list(history[0].keys()))
+
         for v in history:
-            total_stake = v.get('total_stake') or v.get('totalStake') or ''
-            vtrust      = (
-                v.get('vtrust')
-                or v.get('weighted_div_vtrust_score')
-                or v.get('weightedDivVtrustScore')
-                or v.get('vTrust')
+            # если метрики вложены в подсловарь 'metrics'
+            m = v.get('metrics', v)
+
+            total_stake = (
+                m.get('total_stake') or m.get('totalStake') or ''
+            )
+            vtrust = (
+                m.get('vtrust') or m.get('vTrust')
+                or m.get('weighted_div_vtrust_score') or m.get('weightedDivVtrustScore')
                 or ''
             )
-            dividends = v.get('dividends') or ''
-            chk_take  = v.get('chk_take') or v.get('chkTake') or ''
+            dividends = m.get('dividends') or ''
+            chk_take  = m.get('chk_take') or m.get('chkTake') or ''
 
             rows.append([
                 netuid,
@@ -128,10 +115,9 @@ def main():
                 chk_take,
             ])
 
-    # 4. Запись в Google Sheets
     sheet.clear()
     sheet.update('A1', rows, value_input_option='RAW')
-    logging.info("Done. Rows written (excl. header): %d", len(rows)-1)
+    logging.info("Done. Rows written (excluding header): %d", len(rows)-1)
 
 if __name__ == "__main__":
     main()

@@ -42,11 +42,8 @@ def fetch_history(netuid, timeout=10):
     r   = requests.get(url, timeout=timeout)
     r.raise_for_status()
     payload = r.json()
-
-    # DEBUG: логируем всю структуру, чтобы увидеть, где лежат metrics
     logging.info("HISTORY payload for netuid=%s: %s", netuid, json.dumps(payload, indent=2))
-
-    # прокси на список
+    # Ищем список валидаторов
     if isinstance(payload, list):
         return payload
     if isinstance(payload, dict):
@@ -60,6 +57,20 @@ def fetch_history(netuid, timeout=10):
                     return data[key]
     logging.warning("No history found for netuid=%s", netuid)
     return []
+
+# Рекурсивный поиск поля по списку возможных имён
+def find_field(obj, names):
+    if isinstance(obj, dict):
+        # пробуем прямой поиск
+        for n in names:
+            if n in obj:
+                return obj[n]
+        # рекурсивно ищем в подсловарях
+        for v in obj.values():
+            val = find_field(v, names)
+            if val is not None:
+                return val
+    return None
 
 def main():
     subnets = fetch_subnets()
@@ -84,23 +95,15 @@ def main():
             rows.append([netuid, name] + ['']*(len(headers)-2))
             continue
 
-        # покажем ключи первого элемента для отладки
+        # Для отладки: покажем ключи первого элемента
         logging.info("Validator keys for netuid=%d: %s", netuid, list(history[0].keys()))
 
         for v in history:
-            # если метрики вложены в подсловарь 'metrics'
-            m = v.get('metrics', v)
-
-            total_stake = (
-                m.get('total_stake') or m.get('totalStake') or ''
-            )
-            vtrust = (
-                m.get('vtrust') or m.get('vTrust')
-                or m.get('weighted_div_vtrust_score') or m.get('weightedDivVtrustScore')
-                or ''
-            )
-            dividends = m.get('dividends') or ''
-            chk_take  = m.get('chk_take') or m.get('chkTake') or ''
+            # Ищем нужные поля на любом уровне вложенности
+            total_stake = find_field(v, ['total_stake','totalStake'])
+            vtrust      = find_field(v, ['vtrust','vTrust','weighted_div_vtrust_score','weightedDivVtrustScore'])
+            dividends   = find_field(v, ['dividends'])
+            chk_take    = find_field(v, ['chk_take','chkTake'])
 
             rows.append([
                 netuid,
@@ -109,10 +112,10 @@ def main():
                 v.get('score_current',''),
                 v.get('identity',''),
                 v.get('hotkey',''),
-                total_stake,
-                vtrust,
-                dividends,
-                chk_take,
+                total_stake   if total_stake   is not None else '',
+                vtrust        if vtrust        is not None else '',
+                dividends     if dividends     is not None else '',
+                chk_take      if chk_take      is not None else '',
             ])
 
     sheet.clear()

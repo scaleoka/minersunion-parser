@@ -1,5 +1,3 @@
-# .github/workflows/ci.yml
-
 name: CI
 
 on:
@@ -10,8 +8,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Передаём секреты как переменные окружения на уровень job
     env:
       SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+      GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
 
     steps:
       - name: Checkout repository
@@ -24,25 +24,46 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Write service account key file
+      - name: Проверка наличия секретов
         shell: bash
         run: |
-          # Записываем содержимое секрета SERVICE_ACCOUNT_JSON в файл
-          printf '%s\n' "${{ secrets.SERVICE_ACCOUNT_JSON }}" > service-account.json
+          # Проверяем SPREADSHEET_ID
+          if [ -z "$SPREADSHEET_ID" ]; then
+            echo "ERROR: SPREADSHEET_ID is empty" >&2
+            exit 1
+          else
+            echo "SPREADSHEET_ID is set (length=${#SPREADSHEET_ID})"
+          fi
 
-      - name: Validate JSON structure
+          # Проверяем сервисный ключ
+          if [ -z "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
+            echo "ERROR: GOOGLE_APPLICATION_CREDENTIALS is empty" >&2
+            exit 1
+          else
+            echo "GOOGLE_APPLICATION_CREDENTIALS looks non-empty (length=$(echo -n \"$GOOGLE_APPLICATION_CREDENTIALS\" | wc -c) bytes)"
+          fi
+
+      - name: Create service account key file
         shell: bash
         run: |
-          # Быстрая проверка начала файла
-          head -n1 service-account.json | grep -q '^{\"' \
-            && echo "service-account.json looks valid" \
-            || (echo "ERROR: invalid JSON" >&2 && exit 1)
+          printf '%s\n' "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}" > service-account.json
+
+      - name: Validate service-account.json
+        shell: bash
+        run: |
+          if [ ! -s service-account.json ]; then
+            echo "ERROR: service-account.json is missing or empty" >&2
+            exit 1
+          else
+            echo "service-account.json exists and is non-empty"
+          fi
 
       - name: Run MinersUnion parser
         env:
+          # Передаём путь к файлу и ID таблицы в шаг запуска
           GOOGLE_APPLICATION_CREDENTIALS: service-account.json
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
         run: |

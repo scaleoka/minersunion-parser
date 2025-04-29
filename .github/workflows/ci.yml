@@ -2,7 +2,8 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -28,7 +29,6 @@ jobs:
       - name: Write service account key file
         shell: bash
         run: |
-          # Сохраняем в файл чистый JSON из секрета SERVICE_ACCOUNT_JSON
           printf '%s' "${{ secrets.SERVICE_ACCOUNT_JSON }}" > service-account.json
 
       - name: Validate service-account.json
@@ -40,7 +40,6 @@ jobs:
 
       - name: Run MinersUnion parser
         env:
-          # Обозначаем скрипту, где ключ и куда писать
           SERVICE_ACCOUNT_JSON: service-account.json
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
         run: |

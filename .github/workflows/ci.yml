@@ -1,8 +1,10 @@
-name: CI  # Запускаем по расписанию (каждый день в 00:00 UTC) и при push в main
+name: CI
 
 on:
-  push:
-    branches: [ main ]
+  # Ручной запуск из интерфейса
+  workflow_dispatch:
+
+  # Ежедневно в 00:00 UTC
   schedule:
     - cron: '0 0 * * *'
 

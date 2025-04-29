@@ -13,7 +13,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(mes
 # Environment variables
 SERVICE_ACCOUNT_JSON = os.environ.get('SERVICE_ACCOUNT_JSON')
 SPREADSHEET_ID = os.environ.get('SPREADSHEET_ID')
-
 if not SERVICE_ACCOUNT_JSON:
     logging.error("SERVICE_ACCOUNT_JSON not set")
     sys.exit(1)
@@ -62,24 +61,24 @@ def fetch_all_validators(timeout=10):
 def parse_validators(validators):
     """Convert raw validators data into rows for Google Sheets."""
     headers = [
-        'Subnet Name', 'Score', 'Identity', 'Hotkey',
+        'Subnet Name', 'Score Now', 'Identity', 'Hotkey',
         'Total Stake Weight', 'VTrust', 'Dividends', 'Chk Take'
     ]
     rows = [headers]
     for v in validators:
         try:
-            subnet_name = v.get('subnetName') or ''
-            score = float(v.get('score', 0))
-            identity = v.get('identity') or ''
-            hotkey = v.get('hotkey') or ''
+            subnet_name = v.get('subnetName', '')
+            score_now = float(v.get('scoreNow', v.get('score', 0)))
+            identity = v.get('identity', '')
+            hotkey = v.get('hotkey', '')
             voting_power = int(v.get('votingPower', 0))
             vtrust = float(v.get('vtrust', 0))
             dividends = float(v.get('dividends', 0))
             chk_take = float(v.get('checkTake', 0))
         except (TypeError, ValueError) as e:
             logging.warning("Type conversion error for validator %s: %s", v, e)
-            subnet_name = v.get('subnetName')
-            score = v.get('score')
+            subnet_name = v.get('subnetName', '')
+            score_now = v.get('scoreNow', v.get('score'))
             identity = v.get('identity')
             hotkey = v.get('hotkey')
             voting_power = v.get('votingPower')
@@ -87,7 +86,7 @@ def parse_validators(validators):
             dividends = v.get('dividends')
             chk_take = v.get('checkTake')
         rows.append([
-            subnet_name, score, identity, hotkey,
+            subnet_name, score_now, identity, hotkey,
             voting_power, vtrust, dividends, chk_take
         ])
     return rows

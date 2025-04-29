@@ -42,41 +42,25 @@ def fetch_history(netuid, timeout=10):
     r   = requests.get(url, timeout=timeout)
     r.raise_for_status()
     payload = r.json()
+    # Логируем для отладки
     logging.info("HISTORY payload for netuid=%s: %s", netuid, json.dumps(payload, indent=2))
-    # Ищем список валидаторов
-    if isinstance(payload, list):
-        return payload
+    # Находим список валидаторов
     if isinstance(payload, dict):
-        for key in ('validators', 'history'):
-            if key in payload and isinstance(payload[key], list):
-                return payload[key]
+        if 'validators' in payload and isinstance(payload['validators'], list):
+            return payload['validators']
         data = payload.get('data')
-        if isinstance(data, dict):
-            for key in ('validators', 'history'):
-                if key in data and isinstance(data[key], list):
-                    return data[key]
-    logging.warning("No history found for netuid=%s", netuid)
+        if isinstance(data, dict) and 'validators' in data and isinstance(data['validators'], list):
+            return data['validators']
+    elif isinstance(payload, list):
+        return payload
     return []
-
-# Рекурсивный поиск поля по списку возможных имён
-def find_field(obj, names):
-    if isinstance(obj, dict):
-        # пробуем прямой поиск
-        for n in names:
-            if n in obj:
-                return obj[n]
-        # рекурсивно ищем в подсловарях
-        for v in obj.values():
-            val = find_field(v, names)
-            if val is not None:
-                return val
-    return None
 
 def main():
     subnets = fetch_subnets()
     if not subnets:
         logging.error("No subnets found")
         sys.exit(1)
+
     mapping    = {int(sn['netuid']): sn.get('subnet_name','') for sn in subnets}
     max_netuid = max(mapping.keys())
     logging.info("Max netuid: %d", max_netuid)
@@ -95,15 +79,16 @@ def main():
             rows.append([netuid, name] + ['']*(len(headers)-2))
             continue
 
-        # Для отладки: покажем ключи первого элемента
+        # Отладка: вывести ключи первого валидатора
         logging.info("Validator keys for netuid=%d: %s", netuid, list(history[0].keys()))
 
         for v in history:
-            # Ищем нужные поля на любом уровне вложенности
-            total_stake = find_field(v, ['total_stake','totalStake'])
-            vtrust      = find_field(v, ['vtrust','vTrust','weighted_div_vtrust_score','weightedDivVtrustScore'])
-            dividends   = find_field(v, ['dividends'])
-            chk_take    = find_field(v, ['chk_take','chkTake'])
+            m = v.get('metrics', {})
+
+            total_stake = m.get('total_stake', '')
+            vtrust      = m.get('vtrust', '')
+            dividends   = m.get('dividends', '')
+            chk_take    = m.get('chk_take', '')
 
             rows.append([
                 netuid,
@@ -112,15 +97,15 @@ def main():
                 v.get('score_current',''),
                 v.get('identity',''),
                 v.get('hotkey',''),
-                total_stake   if total_stake   is not None else '',
-                vtrust        if vtrust        is not None else '',
-                dividends     if dividends     is not None else '',
-                chk_take      if chk_take      is not None else '',
+                total_stake,
+                vtrust,
+                dividends,
+                chk_take,
             ])
 
     sheet.clear()
     sheet.update('A1', rows, value_input_option='RAW')
-    logging.info("Done. Rows written (excluding header): %d", len(rows)-1)
+    logging.info("Done. Rows written (excl. header): %d", len(rows)-1)
 
 if __name__ == "__main__":
     main()

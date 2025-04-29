@@ -1,35 +1,10 @@
-#!/usr/bin/env python3
-import os
-import sys
-import json
-import logging
 import requests
-from oauth2client.service_account import ServiceAccountCredentials
-import gspread
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
-
-# Google Sheets setup
-SERVICE_ACCOUNT_JSON = os.environ.get('SERVICE_ACCOUNT_JSON')
-SPREADSHEET_ID = os.environ.get('SPREADSHEET_ID')
-if not SERVICE_ACCOUNT_JSON or not SPREADSHEET_ID:
-    logging.error("SERVICE_ACCOUNT_JSON or SPREADSHEET_ID not set")
-    sys.exit(1)
-
-creds = ServiceAccountCredentials.from_json_keyfile_dict(
-    json.loads(SERVICE_ACCOUNT_JSON),
-    ['https://www.googleapis.com/auth/spreadsheets',
-     'https://www.googleapis.com/auth/drive']
-)
-gc = gspread.authorize(creds)
-sheet = gc.open_by_key(SPREADSHEET_ID).sheet1
-
-# Corrected API endpoints with JSON format parameter
 SUMMARY_URL = 'https://api.minersunion.ai/metrics/summary/?format=json'
 HISTORY_URL = 'https://api.minersunion.ai/metrics/history/?format=json'
 
 def fetch_subnets(timeout=10):
-    """Return list of all subnets (netuid, subnetName, etc.)"""
+    """Return list of all subnet objects (each containing 'netuid')."""
     r = requests.get(SUMMARY_URL, timeout=timeout)
     r.raise_for_status()
     payload = r.json()
@@ -38,18 +13,15 @@ def fetch_subnets(timeout=10):
         return payload
     # Если API вернул объект с ключами data или validators
     if isinstance(payload, dict):
-        # Проверяем data.validators
         data = payload.get('data')
         if isinstance(data, dict) and 'validators' in data:
-            return data.get('validators', [])
-        # Проверяем top-level validators
+            return data['validators']
         if 'validators' in payload:
-            return payload.get('validators', [])
-    logging.warning("Unexpected summary response format: %s", type(payload))
+            return payload['validators']
     return []
 
 def fetch_history(netuid, timeout=10):
-    """Return list of validators from history for a given netuid"""
+    """Fetch history for one subnet by netuid."""
     url = f"{HISTORY_URL}&netuid={netuid}"
     r = requests.get(url, timeout=timeout)
     r.raise_for_status()
@@ -57,53 +29,15 @@ def fetch_history(netuid, timeout=10):
 
 def main():
     subnets = fetch_subnets()
-    logging.info("Found subnets: %d", len(subnets))
-
-    # Headers: summary fields + history fields
-    headers = [
-        'Subnet Name', 'Score Now', 'Identity', 'Hotkey',
-        'Total Stake Weight', 'VTrust', 'Dividends', 'Chk Take',
-        'UID', 'Score 7d', 'Score 24h', 'Tao Stake', 'Alpha Stake'
-    ]
-    rows = [headers]
+    total = len(subnets)
+    print(f"Всего подсетей найдено: {total}")
 
     for sn in subnets:
-        netuid = sn.get('netuid')
-        name = sn.get('subnetName', '')
-        score = sn.get('scoreNow', sn.get('score', ''))
-        identity = sn.get('identity', '')
-        hotkey = sn.get('hotkey', '')
-        weight = sn.get('votingPower', '')
-        vtrust = sn.get('vtrust', '')
-        dividends = sn.get('dividends', '')
-        chk_take = sn.get('checkTake', '')
-
-        if netuid is None:
-            logging.warning("Skipping subnet without netuid: %s", name)
-            continue
-
-        history = fetch_history(netuid)
-        if not history:
-            rows.append([name, score, identity, hotkey,
-                         weight, vtrust, dividends, chk_take,
-                         '', '', '', '', ''])
-            continue
-
-        for v in history:
-            rows.append([
-                name, score, identity, hotkey,
-                weight, vtrust, dividends, chk_take,
-                v.get('uid', ''),
-                v.get('score7d', ''),
-                v.get('score24h', ''),
-                v.get('taoStake', ''),
-                v.get('alphaStake', '')
-            ])
-
-    # Write to Google Sheets
-    sheet.clear()
-    sheet.update('A1', rows, value_input_option='RAW')
-    logging.info("Done: wrote %d rows", len(rows) - 1)
+        nid = sn.get('netuid')
+        print(f"— Обрабатываем netuid={nid}")
+        history = fetch_history(nid)
+        print(f"   Записей в history: {len(history)}")
+        # Здесь можно дальше обрабатывать sn и history…
 
 if __name__ == '__main__':
     main()

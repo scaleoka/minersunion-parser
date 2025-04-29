@@ -4,24 +4,20 @@ import requests
 from oauth2client.service_account import ServiceAccountCredentials
 import gspread
 
-# Читаем из окружения «сырое» JSON или путь к файлу
-sa_env = os.environ.get('SERVICE_ACCOUNT_JSON')
-if not sa_env:
-    raise EnvironmentError("Переменная окружения SERVICE_ACCOUNT_JSON не задана")
+# Читаем секрет как чистую JSON-строку
+sa_json = os.environ.get('SERVICE_ACCOUNT_JSON')
+if not sa_json:
+    raise EnvironmentError("SERVICE_ACCOUNT_JSON не задана в env")
+
+# Парсим JSON прямо из строки
+sa_info = json.loads(sa_json)
 
 # Читаем ID таблицы
 spreadsheet_id = os.environ.get('SPREADSHEET_ID')
 if not spreadsheet_id:
-    raise EnvironmentError("Переменная окружения SPREADSHEET_ID не задана")
+    raise EnvironmentError("SPREADSHEET_ID не задана в env")
 
-# Разбираем JSON: либо строка, либо файл
-if sa_env.strip().startswith('{'):
-    sa_info = json.loads(sa_env)
-else:
-    with open(sa_env, 'r', encoding='utf-8') as f:
-        sa_info = json.load(f)
-
-# Авторизация Google Sheets
+# Авторизуемся в Google Sheets
 scope = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive'

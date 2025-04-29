@@ -1,3 +1,5 @@
+# .github/workflows/ci.yml
+
 name: CI
 
 on:
@@ -8,10 +10,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # Передаём секреты как переменные окружения на уровень job
     env:
       SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
-      GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.SERVICE_ACCOUNT_JSON }}
 
     steps:
       - name: Checkout repository
@@ -24,46 +24,25 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Проверка наличия секретов
+      - name: Write service account key file
         shell: bash
         run: |
-          # Проверяем SPREADSHEET_ID
-          if [ -z "$SPREADSHEET_ID" ]; then
-            echo "ERROR: SPREADSHEET_ID is empty" >&2
-            exit 1
-          else
-            echo "SPREADSHEET_ID is set (length=${#SPREADSHEET_ID})"
-          fi
-
-          # Проверяем сервисный ключ
-          if [ -z "$SERVICE_ACCOUNT_JSON" ]; then
-            echo "ERROR: SERVICE_ACCOUNT_JSON is empty" >&2
-            exit 1
-          else
-            echo "SERVICE_ACCOUNT_JSON looks non-empty (length=$(echo -n \"$SERVICE_ACCOUNT_JSON\" | wc -c) bytes)"
-          fi
-
-      - name: Create service account key file
-        shell: bash
-        run: |
-          printf '%s\n' "${{ secrets.SERVICE_ACCOUNT_JSON }}" > service-account.json
+          # Сохраняем новое содержимое сервиса-аккаунта
+          printf '%s' "${{ secrets.SERVICE_ACCOUNT_JSON }}" > service-account.json
 
       - name: Validate service-account.json
         shell: bash
         run: |
-          if [ ! -s service-account.json ]; then
-            echo "ERROR: service-account.json is missing or empty" >&2
-            exit 1
-          else
-            echo "service-account.json exists and is non-empty"
-          fi
+          # Проверяем начало JSON
+          head -n1 service-account.json | grep -q '^{"' \
+            && echo "service-account.json is valid JSON" \
+            || (echo "ERROR: invalid JSON" >&2 && exit 1)
 
       - name: Run MinersUnion parser
         env:
-          # Передаём путь к файлу и ID таблицы в шаг запуска
           SERVICE_ACCOUNT_JSON: service-account.json
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
         run: |

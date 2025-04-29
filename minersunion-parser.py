@@ -7,108 +7,90 @@ import requests
 from oauth2client.service_account import ServiceAccountCredentials
 import gspread
 
-# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 
-# Environment variables
+# Google Sheets setup
 SERVICE_ACCOUNT_JSON = os.environ.get('SERVICE_ACCOUNT_JSON')
 SPREADSHEET_ID = os.environ.get('SPREADSHEET_ID')
-if not SERVICE_ACCOUNT_JSON:
-    logging.error("SERVICE_ACCOUNT_JSON not set")
-    sys.exit(1)
-if not SPREADSHEET_ID:
-    logging.error("SPREADSHEET_ID not set")
+if not SERVICE_ACCOUNT_JSON or not SPREADSHEET_ID:
+    logging.error("SERVICE_ACCOUNT_JSON or SPREADSHEET_ID not set")
     sys.exit(1)
 
-# Authenticate Google Sheets
-scope = [
-    'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive'
-]
-try:
-    sa_info = json.loads(SERVICE_ACCOUNT_JSON)
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(sa_info, scope)
-    gc = gspread.authorize(creds)
-    sheet = gc.open_by_key(SPREADSHEET_ID).sheet1
-except Exception as e:
-    logging.error("Failed to authenticate Google Sheets: %s", e)
-    sys.exit(1)
+creds = ServiceAccountCredentials.from_json_keyfile_dict(
+    json.loads(SERVICE_ACCOUNT_JSON),
+    ['https://www.googleapis.com/auth/spreadsheets',
+     'https://www.googleapis.com/auth/drive']
+)
+gc = gspread.authorize(creds)
+sheet = gc.open_by_key(SPREADSHEET_ID).sheet1
 
-VALIDATORS_URL = 'https://api.minersunion.ai/metrics/summary/'
+# Corrected API endpoints with JSON format parameter
+SUMMARY_URL = 'https://api.minersunion.ai/metrics/summary/?format=json'
+HISTORY_URL = 'https://api.minersunion.ai/metrics/history/?format=json'
 
-def fetch_all_validators(timeout=10):
-    """Fetch validators list from API."""
-    try:
-        resp = requests.get(VALIDATORS_URL, timeout=timeout)
-        resp.raise_for_status()
-        logging.debug("API response: %s", resp.text[:200])
-    except requests.exceptions.RequestException as e:
-        logging.error("Error fetching validators: %s", e)
-        raise
-    try:
-        payload = resp.json()
-    except json.JSONDecodeError as e:
-        logging.error("Invalid JSON response: %s", e)
-        raise
-    # Extract list
-    if isinstance(payload, dict):
-        if 'data' in payload and isinstance(payload['data'], dict):
-            return payload['data'].get('validators', [])
-        return payload.get('validators', [])
-    logging.warning("Unexpected payload type: %s", type(payload))
-    return []
+def fetch_subnets(timeout=10):
+    """Return list of all subnets (netuid, subnetName, etc.)"""
+    r = requests.get(SUMMARY_URL, timeout=timeout)
+    r.raise_for_status()
+    data = r.json().get('data', {}) or r.json()
+    return data.get('validators', [])
 
-def parse_validators(validators):
-    """Convert raw validators data into rows for Google Sheets."""
-    headers = [
-        'Subnet Name', 'Score Now', 'Identity', 'Hotkey',
-        'Total Stake Weight', 'VTrust', 'Dividends', 'Chk Take'
-    ]
-    rows = [headers]
-    for v in validators:
-        try:
-            subnet_name = v.get('subnetName', '')
-            score_now = float(v.get('scoreNow', v.get('score', 0)))
-            identity = v.get('identity', '')
-            hotkey = v.get('hotkey', '')
-            voting_power = int(v.get('votingPower', 0))
-            vtrust = float(v.get('vtrust', 0))
-            dividends = float(v.get('dividends', 0))
-            chk_take = float(v.get('checkTake', 0))
-        except (TypeError, ValueError) as e:
-            logging.warning("Type conversion error for validator %s: %s", v, e)
-            subnet_name = v.get('subnetName', '')
-            score_now = v.get('scoreNow', v.get('score'))
-            identity = v.get('identity')
-            hotkey = v.get('hotkey')
-            voting_power = v.get('votingPower')
-            vtrust = v.get('vtrust')
-            dividends = v.get('dividends')
-            chk_take = v.get('checkTake')
-        rows.append([
-            subnet_name, score_now, identity, hotkey,
-            voting_power, vtrust, dividends, chk_take
-        ])
-    return rows
-
-def write_to_sheet(rows):
-    """Clear and update Google Sheet with given rows."""
-    try:
-        sheet.clear()
-        sheet.update('A1', rows, value_input_option='RAW')
-        logging.info("Written %d rows to sheet %s", len(rows)-1, SPREADSHEET_ID)
-    except Exception as e:
-        logging.error("Failed to write to Google Sheets: %s", e)
-        raise
+def fetch_history(netuid, timeout=10):
+    """Return list of validators from history for a given netuid"""
+    url = f"{HISTORY_URL}&netuid={netuid}"
+    r = requests.get(url, timeout=timeout)
+    r.raise_for_status()
+    return r.json().get('validators', [])
 
 def main():
-    try:
-        validators = fetch_all_validators()
-        rows = parse_validators(validators)
-        write_to_sheet(rows)
-    except Exception as e:
-        logging.error("Script failed: %s", e)
-        sys.exit(1)
+    subnets = fetch_subnets()
+    logging.info("Found subnets: %d", len(subnets))
+
+    # Headers: summary fields + history fields
+    headers = [
+        'Subnet Name', 'Score Now', 'Identity', 'Hotkey',
+        'Total Stake Weight', 'VTrust', 'Dividends', 'Chk Take',
+        'UID', 'Score 7d', 'Score 24h', 'Tao Stake', 'Alpha Stake'
+    ]
+    rows = [headers]
+
+    for sn in subnets:
+        netuid = sn.get('netuid')
+        name = sn.get('subnetName', '')
+        score = sn.get('scoreNow', sn.get('score', ''))
+        identity = sn.get('identity', '')
+        hotkey = sn.get('hotkey', '')
+        weight = sn.get('votingPower', '')
+        vtrust = sn.get('vtrust', '')
+        dividends = sn.get('dividends', '')
+        chk_take = sn.get('checkTake', '')
+
+        if netuid is None:
+            logging.warning("Skipping subnet without netuid: %s", name)
+            continue
+
+        history = fetch_history(netuid)
+        if not history:
+            rows.append([name, score, identity, hotkey,
+                         weight, vtrust, dividends, chk_take,
+                         '', '', '', '', ''])
+            continue
+
+        for v in history:
+            rows.append([
+                name, score, identity, hotkey,
+                weight, vtrust, dividends, chk_take,
+                v.get('uid', ''),
+                v.get('score7d', ''),
+                v.get('score24h', ''),
+                v.get('taoStake', ''),
+                v.get('alphaStake', '')
+            ])
+
+    # Write to Google Sheets
+    sheet.clear()
+    sheet.update('A1', rows, value_input_option='RAW')
+    logging.info("Done: wrote %d rows", len(rows) - 1)
 
 if __name__ == '__main__':
     main()

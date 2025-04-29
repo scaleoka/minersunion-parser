@@ -32,8 +32,21 @@ def fetch_subnets(timeout=10):
     """Return list of all subnets (netuid, subnetName, etc.)"""
     r = requests.get(SUMMARY_URL, timeout=timeout)
     r.raise_for_status()
-    data = r.json().get('data', {}) or r.json()
-    return data.get('validators', [])
+    payload = r.json()
+    # Если API вернул список напрямую
+    if isinstance(payload, list):
+        return payload
+    # Если API вернул объект с ключами data или validators
+    if isinstance(payload, dict):
+        # Проверяем data.validators
+        data = payload.get('data')
+        if isinstance(data, dict) and 'validators' in data:
+            return data.get('validators', [])
+        # Проверяем top-level validators
+        if 'validators' in payload:
+            return payload.get('validators', [])
+    logging.warning("Unexpected summary response format: %s", type(payload))
+    return []
 
 def fetch_history(netuid, timeout=10):
     """Return list of validators from history for a given netuid"""

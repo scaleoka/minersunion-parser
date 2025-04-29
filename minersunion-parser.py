@@ -68,27 +68,45 @@ def main():
         'identity',
         'hotkey',
         'total_stake',
-        'weighted_div_vtrust_score',
+        'vtrust',
         'dividends',
-        'chk_take'
+        'chk_take',
     ]
     rows = [headers]
 
-    # 3. Проходим netuid от 1 до max_netuid
+    # 3. Проходим по всем netuid
     for netuid in range(1, max_netuid + 1):
         subnet_name = mapping.get(netuid, '')
         logging.info("Processing netuid=%d (%s)", netuid, subnet_name)
         history = fetch_history(netuid)
         if not history:
+            # если нет истории — пустые ячейки
             rows.append([netuid, subnet_name] + [''] * (len(headers) - 2))
             continue
 
         for v in history:
-            # пробуем оба варианта названий ключей: snake_case и camelCase
-            total_stake = v.get('total_stake') or v.get('totalStake') or ''
-            weighted = v.get('weighted_div_vtrust_score') or v.get('weightedDivVtrustScore') or ''
-            dividends = v.get('dividends') or ''
-            chk_take = v.get('chk_take') or v.get('chkTake') or ''
+            total_stake = (
+                v.get('total_stake') or
+                v.get('totalStake') or
+                ''
+            )
+            # основной ключ vtrust, а потом fallback на старые варианты
+            vtrust = (
+                v.get('vtrust') or
+                v.get('weighted_div_vtrust_score') or
+                v.get('weightedDivVtrustScore') or
+                v.get('vTrust') or
+                ''
+            )
+            dividends = (
+                v.get('dividends') or
+                ''
+            )
+            chk_take = (
+                v.get('chk_take') or
+                v.get('chkTake') or
+                ''
+            )
 
             rows.append([
                 netuid,
@@ -98,15 +116,15 @@ def main():
                 v.get('identity', ''),
                 v.get('hotkey', ''),
                 total_stake,
-                weighted,
+                vtrust,
                 dividends,
-                chk_take
+                chk_take,
             ])
 
-    # 4. Запись в Google Sheets
+    # 4. Записываем в Google Sheets
     sheet.clear()
     sheet.update('A1', rows, value_input_option='RAW')
-    logging.info("Done. Total rows written (excluding header): %d", len(rows) - 1)
+    logging.info("Done. Всего строк (без заголовка): %d", len(rows) - 1)
 
 if __name__ == '__main__':
     main()

@@ -1,6 +1,3 @@
-from dotenv import load_dotenv
-load_dotenv()            # <- прочитает .env и положит пары KEY=VALUE в os.environ
-
 import os
 import requests
 from oauth2client.service_account import ServiceAccountCredentials

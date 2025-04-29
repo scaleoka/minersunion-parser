@@ -1,68 +1,115 @@
+#!/usr/bin/env python3
 import os
+import sys
 import json
+import logging
 import requests
 from oauth2client.service_account import ServiceAccountCredentials
 import gspread
 
-# 1) Читаем JSON сервис-аккаунта из переменных окружения
-sa_json = os.environ.get('SERVICE_ACCOUNT_JSON')
-if not sa_json:
-    raise EnvironmentError("SERVICE_ACCOUNT_JSON не задана в переменных окружения")
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 
-# 2) Парсим его сразу из строки
-sa_info = json.loads(sa_json)
+# Environment variables
+SERVICE_ACCOUNT_JSON = os.environ.get('SERVICE_ACCOUNT_JSON')
+SPREADSHEET_ID = os.environ.get('SPREADSHEET_ID')
 
-# 3) Читаем ID Google Sheets
-spreadsheet_id = os.environ.get('SPREADSHEET_ID')
-if not spreadsheet_id:
-    raise EnvironmentError("SPREADSHEET_ID не задана в переменных окружения")
+if not SERVICE_ACCOUNT_JSON:
+    logging.error("SERVICE_ACCOUNT_JSON not set")
+    sys.exit(1)
+if not SPREADSHEET_ID:
+    logging.error("SPREADSHEET_ID not set")
+    sys.exit(1)
 
-# 4) Авторизуемся в Google Sheets
+# Authenticate Google Sheets
 scope = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive'
 ]
-creds = ServiceAccountCredentials.from_json_keyfile_dict(sa_info, scope)
-gc = gspread.authorize(creds)
-sheet = gc.open_by_key(spreadsheet_id).sheet1
+try:
+    sa_info = json.loads(SERVICE_ACCOUNT_JSON)
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(sa_info, scope)
+    gc = gspread.authorize(creds)
+    sheet = gc.open_by_key(SPREADSHEET_ID).sheet1
+except Exception as e:
+    logging.error("Failed to authenticate Google Sheets: %s", e)
+    sys.exit(1)
 
-def fetch_all_validators():
-    """
-    Достаём сразу весь массив валидаторов по endpoint /metrics/summary/
-    (в нём есть все нужные поля, без пагинации).
-    """
-    url = 'https://api.minersunion.ai/metrics/summary/'
-    resp = requests.get(url)
-    resp.raise_for_status()
-    return resp.json()
+VALIDATORS_URL = 'https://api.minersunion.ai/metrics/summary/'
 
-def main():
-    validators = fetch_all_validators()
+def fetch_all_validators(timeout=10):
+    """Fetch validators list from API."""
+    try:
+        resp = requests.get(VALIDATORS_URL, timeout=timeout)
+        resp.raise_for_status()
+        logging.debug("API response: %s", resp.text[:200])
+    except requests.exceptions.RequestException as e:
+        logging.error("Error fetching validators: %s", e)
+        raise
+    try:
+        payload = resp.json()
+    except json.JSONDecodeError as e:
+        logging.error("Invalid JSON response: %s", e)
+        raise
+    # Extract list
+    if isinstance(payload, dict):
+        if 'data' in payload and isinstance(payload['data'], dict):
+            return payload['data'].get('validators', [])
+        return payload.get('validators', [])
+    logging.warning("Unexpected payload type: %s", type(payload))
+    return []
 
-    # Заголовки колонок
+def parse_validators(validators):
+    """Convert raw validators data into rows for Google Sheets."""
     headers = [
         'Subnet Name', 'Score', 'Identity', 'Hotkey',
         'Total Stake Weight', 'VTrust', 'Dividends', 'Chk Take'
     ]
     rows = [headers]
-
-    # Собираем данные
     for v in validators:
+        try:
+            subnet_name = v.get('subnetName') or ''
+            score = float(v.get('score', 0))
+            identity = v.get('identity') or ''
+            hotkey = v.get('hotkey') or ''
+            voting_power = int(v.get('votingPower', 0))
+            vtrust = float(v.get('vtrust', 0))
+            dividends = float(v.get('dividends', 0))
+            chk_take = float(v.get('checkTake', 0))
+        except (TypeError, ValueError) as e:
+            logging.warning("Type conversion error for validator %s: %s", v, e)
+            subnet_name = v.get('subnetName')
+            score = v.get('score')
+            identity = v.get('identity')
+            hotkey = v.get('hotkey')
+            voting_power = v.get('votingPower')
+            vtrust = v.get('vtrust')
+            dividends = v.get('dividends')
+            chk_take = v.get('checkTake')
         rows.append([
-            v.get('subnetName'),
-            v.get('score'),
-            v.get('identity'),
-            v.get('hotkey'),
-            v.get('votingPower'),
-            v.get('vtrust'),
-            v.get('dividends'),
-            v.get('checkTake'),
+            subnet_name, score, identity, hotkey,
+            voting_power, vtrust, dividends, chk_take
         ])
+    return rows
 
-    # Пишем в Google Sheets
-    sheet.clear()
-    sheet.update(rows)
-    print(f"Записано {len(rows)-1} строк в таблицу {spreadsheet_id}")
+def write_to_sheet(rows):
+    """Clear and update Google Sheet with given rows."""
+    try:
+        sheet.clear()
+        sheet.update('A1', rows, value_input_option='RAW')
+        logging.info("Written %d rows to sheet %s", len(rows)-1, SPREADSHEET_ID)
+    except Exception as e:
+        logging.error("Failed to write to Google Sheets: %s", e)
+        raise
+
+def main():
+    try:
+        validators = fetch_all_validators()
+        rows = parse_validators(validators)
+        write_to_sheet(rows)
+    except Exception as e:
+        logging.error("Script failed: %s", e)
+        sys.exit(1)
 
 if __name__ == '__main__':
     main()

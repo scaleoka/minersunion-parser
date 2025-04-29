@@ -1,4 +1,4 @@
-name: Run MinersUnion Parser
+name: CI
 
 # Запускаем по расписанию (здесь — каждый день в 00:00 UTC) и при push в main
 on:

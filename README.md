@@ -51,23 +51,23 @@ pip install -r requirements.txt
 
 | Переменная окружения          | Описание                                                         |
 |-------------------------------|------------------------------------------------------------------|
-| `GOOGLE_APPLICATION_CREDENTIALS` | Путь к JSON-файлу сервисного аккаунта Google Cloud                |
+| `SERVICE_ACCOUNT_JSON` | Путь к JSON-файлу сервисного аккаунта Google Cloud                |
 | `SPREADSHEET_ID`              | ID Google Sheets (из URL таблицы: `https://docs.google.com/.../d/{ID}/...`) |
 
 Пример на Linux/macOS (Bash):
 ```bash
-export GOOGLE_APPLICATION_CREDENTIALS="/path/to/credentials.json"
+export SERVICE_ACCOUNT_JSON="/path/to/credentials.json"
 export SPREADSHEET_ID="1TuYcXnEM9sO0eo2XkecgmxCIsYB5dZDTQBPmCZBbw4o"
 ```
 
 На Windows (PowerShell):
 ```powershell
-setx GOOGLE_APPLICATION_CREDENTIALS "C:\path\to\credentials.json"
+setx SERVICE_ACCOUNT_JSON "C:\path\to\credentials.json"
 setx SPREADSHEET_ID "1TuYcXnEM9sO0eo2XkecgmxCIsYB5dZDTQBPmCZBbw4o"
 ```
 
 Если вы используете GitHub Actions, добавьте эти секреты в Settings → Secrets:
-- `GOOGLE_APPLICATION_CREDENTIALS` (содержимое JSON или путь в runner)
+- `SERVICE_ACCOUNT_JSON` (содержимое JSON или путь в runner)
 - `SPREADSHEET_ID`
 
 ---
@@ -86,7 +86,7 @@ python minersunion-parser.py
 
 При настройке CI (например, GitHub Actions) убедитесь, что в вашем workflow:
 - находится шаг, устанавливающий Python
-- задаёт переменные окружения `GOOGLE_APPLICATION_CREDENTIALS` и `SPREADSHEET_ID`
+- задаёт переменные окружения `SERVICE_ACCOUNT_JSON` и `SPREADSHEET_ID`
 - копирует файл `credentials.json` (либо использует секреты)
 
 Пример фрагмента workflow:
@@ -106,10 +106,10 @@ jobs:
           pip install -r requirements.txt
       - name: Write creds file
         run: |
-          echo "$GOOGLE_APPLICATION_CREDENTIALS" > creds.json
+          echo "$SERVICE_ACCOUNT_JSON" > creds.json
       - name: Run parser
         env:
-          GOOGLE_APPLICATION_CREDENTIALS: creds.json
+          SERVICE_ACCOUNT_JSON: creds.json
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
         run: |
           python minersunion-parser.py

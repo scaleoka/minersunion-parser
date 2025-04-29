@@ -1,5 +1,3 @@
-# .github/workflows/ci.yml
-
 name: CI
 
 on:
@@ -10,6 +8,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Передаём секреты как переменные окружения на уровень job
+    env:
+      SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+      GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
 
     steps:
       - name: Checkout repository
@@ -41,7 +43,7 @@ jobs:
             echo "ERROR: GOOGLE_APPLICATION_CREDENTIALS is empty" >&2
             exit 1
           else
-            echo "GOOGLE_APPLICATION_CREDENTIALS looks non-empty (length=$(echo -n "$GOOGLE_APPLICATION_CREDENTIALS" | wc -c) bytes)"
+            echo "GOOGLE_APPLICATION_CREDENTIALS looks non-empty (length=$(echo -n \"$GOOGLE_APPLICATION_CREDENTIALS\" | wc -c) bytes)"
           fi
 
       - name: Create service account key file
@@ -61,6 +63,7 @@ jobs:
 
       - name: Run MinersUnion parser
         env:
+          # Передаём путь к файлу и ID таблицы в шаг запуска
           GOOGLE_APPLICATION_CREDENTIALS: service-account.json
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
         run: |

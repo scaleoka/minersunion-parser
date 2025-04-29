@@ -1,4 +1,3 @@
-# .github/workflows/ci.yml
 name: CI
 
 on:
@@ -29,4 +28,5 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run MinersUnion parser
-        run: python minersunion-parser.py
+        run: |
+          python minersunion-parser.py

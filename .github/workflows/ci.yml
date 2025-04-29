@@ -1,3 +1,5 @@
+# .github/workflows/ci.yml
+
 name: CI
 
 on:
@@ -9,12 +11,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # путь к файлу, в который мы распишем JSON
-      GOOGLE_APPLICATION_CREDENTIALS: service-account.json
       SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -26,20 +27,23 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Dump service account JSON
+      - name: Write service account key file
         shell: bash
         run: |
-          # записываем секрет, который хранит чистый JSON
+          # Записываем содержимое секрета SERVICE_ACCOUNT_JSON в файл
           printf '%s\n' "${{ secrets.SERVICE_ACCOUNT_JSON }}" > service-account.json
 
-      - name: Validate service-account.json
+      - name: Validate JSON structure
         shell: bash
         run: |
-          if ! head -n1 service-account.json | grep -q '{'; then
-            echo "ERROR: service-account.json doesn't start with '{'—проверьте секрет SERVICE_ACCOUNT_JSON" >&2
-            exit 1
-          fi
+          # Быстрая проверка начала файла
+          head -n1 service-account.json | grep -q '^{\"' \
+            && echo "service-account.json looks valid" \
+            || (echo "ERROR: invalid JSON" >&2 && exit 1)
 
       - name: Run MinersUnion parser
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: service-account.json
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
         run: |
           python minersunion-parser.py

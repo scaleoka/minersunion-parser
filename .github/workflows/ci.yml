@@ -11,7 +11,7 @@ jobs:
     # Передаём секреты как переменные окружения на уровень job
     env:
       SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
-      GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
+      GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.SERVICE_ACCOUNT_JSON }}
 
     steps:
       - name: Checkout repository
@@ -39,17 +39,17 @@ jobs:
           fi
 
           # Проверяем сервисный ключ
-          if [ -z "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
-            echo "ERROR: GOOGLE_APPLICATION_CREDENTIALS is empty" >&2
+          if [ -z "$SERVICE_ACCOUNT_JSON" ]; then
+            echo "ERROR: SERVICE_ACCOUNT_JSON is empty" >&2
             exit 1
           else
-            echo "GOOGLE_APPLICATION_CREDENTIALS looks non-empty (length=$(echo -n \"$GOOGLE_APPLICATION_CREDENTIALS\" | wc -c) bytes)"
+            echo "SERVICE_ACCOUNT_JSON looks non-empty (length=$(echo -n \"$SERVICE_ACCOUNT_JSON\" | wc -c) bytes)"
           fi
 
       - name: Create service account key file
         shell: bash
         run: |
-          printf '%s\n' "${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}" > service-account.json
+          printf '%s\n' "${{ secrets.SERVICE_ACCOUNT_JSON }}" > service-account.json
 
       - name: Validate service-account.json
         shell: bash
@@ -64,7 +64,7 @@ jobs:
       - name: Run MinersUnion parser
         env:
           # Передаём путь к файлу и ID таблицы в шаг запуска
-          GOOGLE_APPLICATION_CREDENTIALS: service-account.json
+          SERVICE_ACCOUNT_JSON: service-account.json
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
         run: |
           python minersunion-parser.py

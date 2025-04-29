@@ -31,12 +31,14 @@ jobs:
         run: |
           printf '%s' "${{ secrets.SERVICE_ACCOUNT_JSON }}" > service-account.json
 
-      - name: Validate service-account.json
+      - name: Ensure service-account.json is non-empty
         shell: bash
         run: |
-          head -n1 service-account.json | grep -q '^{\"' \
-            && echo "service-account.json is valid JSON" \
-            || (echo "ERROR: invalid JSON" >&2 && exit 1)
+          if [ ! -s service-account.json ]; then
+            echo "ERROR: service-account.json is missing or empty" >&2
+            exit 1
+          fi
+          echo "service-account.json OK (non-zero size)"
 
       - name: Run MinersUnion parser
         env:

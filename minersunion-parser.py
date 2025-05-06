@@ -21,7 +21,10 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(
     ['https://www.googleapis.com/auth/spreadsheets','https://www.googleapis.com/auth/drive']
 )
 gc    = gspread.authorize(creds)
-sheet = gc.open_by_key(SPREADSHEET_ID).sheet1
+
+# Открываем файл по ID и лист с именем 'minersunion'
+sh    = gc.open_by_key(SPREADSHEET_ID)
+sheet = sh.worksheet('minersunion')
 
 SUMMARY_URL = 'https://api.minersunion.ai/metrics/summary/?format=json'
 HISTORY_URL = 'https://api.minersunion.ai/metrics/history/?format=json'
@@ -77,7 +80,6 @@ def main():
             # metrics_history — массив снимков, берём последний
             history = v.get('metrics_history') or []
             if not history:
-                # не нашли снимков — пустые поля
                 m = {}
             else:
                 m = history[-1]
@@ -100,6 +102,7 @@ def main():
                 chk_take,
             ])
 
+    # Очищаем и обновляем лист minersunion
     sheet.clear()
     sheet.update('A1', rows, value_input_option='RAW')
     logging.info("Done. Rows written (excluding header): %d", len(rows)-1)
